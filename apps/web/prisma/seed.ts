@@ -1,7 +1,5 @@
 /* Deterministic seed: fixed faker seed, Indian names, real state/district names. Run: pnpm db:seed */
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { PrismaClient, type Prisma, type TraineeCategory, type ProgrammeStatus, type ApplicationStatus, type JobType } from "@prisma/client";
 import { fakerEN_IN as faker } from "@faker-js/faker";
 import { hash } from "@node-rs/argon2";
@@ -12,7 +10,8 @@ import type { CourseSeed, QuestionSeed } from "./content-types";
 import { GEO } from "../src/lib/geo";
 import { grade, type Question } from "../src/lib/services/grading";
 import { evaluateEligibility, formatCertNo } from "../src/lib/services/eligibility";
-import { renderCertificatePdf } from "../src/lib/pdf";
+import { renderCertificatePdf, toSnapshot } from "../src/lib/pdf";
+import { putObject, usingBlob } from "../src/lib/storage";
 
 const db = new PrismaClient();
 faker.seed(26087);
@@ -20,7 +19,6 @@ faker.seed(26087);
 const NOW = new Date();
 const DAY = 86_400_000;
 const APP_URL = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
-const STORAGE = process.env.STORAGE_DIR ?? path.join(process.cwd(), "uploads");
 export const DEMO_KIOSK_KEY = "ssd_demo_kiosk_key_vamnicom_2026";
 
 let idn = 0;
@@ -556,8 +554,10 @@ async function main() {
       if (e.eligible) toCertify.push({ p, t, issuedAt: new Date(p.end.getTime() + 2 * DAY) });
     }
   }
-  console.log(`Generating ${toCertify.length} certificate PDFs…`);
-  await mkdir(path.join(STORAGE, "certificates"), { recursive: true });
+  // With Vercel Blob the PDFs are not uploaded (Hobby plans have a small monthly upload quota): each certificate keeps
+  // its render snapshot, and downloads rebuild the identical file and check it against the stored SHA-256.
+  const storePdfs = !usingBlob();
+  console.log(`Generating ${toCertify.length} certificate PDFs${storePdfs ? "" : " (hash + snapshot only; not uploaded to Blob)"}…`);
   const seq: Record<string, number> = {};
   const certRows: Prisma.CertificateCreateManyInput[] = [];
   const jobsQ = toCertify.map((c) => {
@@ -570,10 +570,11 @@ async function main() {
   for (let i = 0; i < jobsQ.length; i += CONC) {
     await Promise.all(
       jobsQ.slice(i, i + CONC).map(async (c) => {
-        const pdf = await renderCertificatePdf({ certNo: c.certNo, traineeName: c.t.name, programmeTitle: c.p.title, programmeCode: c.p.code, institutionName: c.p.inst.name, startDate: c.p.start, endDate: c.p.end, issuedAt: c.issuedAt, verifyUrl: `${APP_URL}/verify/${c.certNo}` });
+        const input = { certNo: c.certNo, traineeName: c.t.name, programmeTitle: c.p.title, programmeCode: c.p.code, institutionName: c.p.inst.name, startDate: c.p.start, endDate: c.p.end, issuedAt: c.issuedAt, verifyUrl: `${APP_URL}/verify/${c.certNo}` };
+        const pdf = await renderCertificatePdf(input);
         const key = `certificates/${c.certNo}.pdf`;
-        await writeFile(path.join(STORAGE, key), pdf);
-        certRows.push({ id: id("z"), certNo: c.certNo, traineeId: c.t.id, programmeId: c.p.id, issuedAt: c.issuedAt, pdfUrl: key, sha256: createHash("sha256").update(pdf).digest("hex") });
+        if (storePdfs) await putObject(key, pdf, "application/pdf");
+        certRows.push({ id: id("z"), certNo: c.certNo, traineeId: c.t.id, programmeId: c.p.id, issuedAt: c.issuedAt, pdfUrl: key, sha256: createHash("sha256").update(pdf).digest("hex"), renderInput: toSnapshot(input, null) as unknown as Prisma.InputJsonValue });
       }),
     );
     if (i % 240 === 0) process.stdout.write(`  ${i}/${jobsQ.length}\r`);

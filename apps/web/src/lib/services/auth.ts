@@ -20,7 +20,9 @@ export const Phone = z
 export async function requestOtp(phone: string) {
   const since = new Date(Date.now() - 60 * 60_000);
   const recent = await db.otpRequest.count({ where: { phone, createdAt: { gte: since } } });
-  if (recent >= OTP_PER_HOUR) throw new ApiError("RATE_LIMITED", "Too many OTP requests. Try again in an hour.");
+  // The fixed demo logins are exempt in demo mode so repeated sign-ins on stage never lock anyone out.
+  const demoPhone = devMode() && /^900000000[1-7]$/.test(phone);
+  if (!demoPhone && recent >= OTP_PER_HOUR) throw new ApiError("RATE_LIMITED", "Too many OTP requests. Try again in an hour.");
   const code = devMode() ? DEV_OTP : String(randomInt(0, 1_000_000)).padStart(6, "0");
   await db.otpRequest.create({ data: { phone, code, expiresAt: new Date(Date.now() + OTP_TTL_MS) } });
   sendSms(phone, `Your Sahakar Setu OTP is ${code}. It expires in 5 minutes.`);

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getObject, verifySignedUrl } from "@/lib/storage";
+import { certificatePdfBytes } from "@/lib/services/certificates";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,8 @@ export async function GET(req: NextRequest) {
   const key = sp.get("key") ?? "";
   if (!verifySignedUrl(key, Number(sp.get("exp")), sp.get("sig") ?? "")) return NextResponse.json({ error: { code: "FORBIDDEN", message: "Link expired or invalid" } }, { status: 403 });
   try {
-    const buf = await getObject(key);
+    const buf = key.startsWith("certificates/") ? await certificatePdfBytes(key) : await getObject(key);
+    if (!buf) throw new Error("missing");
     const ext = key.split(".").pop()?.toLowerCase() ?? "";
     return new NextResponse(new Uint8Array(buf), {
       headers: { "Content-Type": TYPES[ext] ?? "application/octet-stream", "Content-Disposition": `inline; filename="${key.split("/").pop()}"`, "Cache-Control": "private, max-age=600" },

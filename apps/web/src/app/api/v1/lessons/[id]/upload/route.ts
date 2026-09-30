@@ -19,7 +19,7 @@ export const POST = route<{ id: string }>(async (req, { params }) => {
   if (!(file instanceof Blob) || !OK[file.type]) throw new ApiError("BAD_REQUEST", "Upload an MP4, PDF, MP3 or VTT file");
   if (file.size > 200 * 1024 * 1024) throw new ApiError("BAD_REQUEST", "File must be under 200 MB");
   const ext = OK[file.type];
-  const key = await putObject(`lessons/${l.id}${captions instanceof Blob ? "-captions" : ""}.${ext}`, Buffer.from(await file.arrayBuffer()));
+  const key = await putObject(`lessons/${l.id}${captions instanceof Blob ? "-captions" : ""}.${ext}`, Buffer.from(await file.arrayBuffer()), file.type);
   const url = `/api/v1/lessons/${l.id}/file?k=${encodeURIComponent(key)}`;
   const updated = await db.lesson.update({
     where: { id: l.id },

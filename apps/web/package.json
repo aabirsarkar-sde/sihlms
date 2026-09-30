@@ -14,7 +14,9 @@
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "test:int": "vitest run -c vitest.int.config.ts",
-    "demo:reset": "tsx prisma/seed.ts"
+    "demo:reset": "tsx prisma/seed.ts",
+    "postinstall": "prisma generate",
+    "vercel-build": "DATABASE_URL=\"${DIRECT_URL:-$DATABASE_URL}\" prisma migrate deploy && next build"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -23,6 +25,7 @@
     "@anthropic-ai/sdk": "^0.129.0",
     "@node-rs/argon2": "^2.2.1",
     "@prisma/client": "5.22.0",
+    "@vercel/blob": "^2.8.0",
     "@zxing/browser": "0.1.5",
     "@zxing/library": "0.21.3",
     "class-variance-authority": "^0.7.1",

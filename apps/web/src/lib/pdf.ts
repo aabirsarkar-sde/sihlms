@@ -1,6 +1,19 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import QRCode from "qrcode";
 
+/** JSON-safe snapshot stored on the certificate row; dates as ISO strings. */
+export type CertificateSnapshot = Omit<CertificatePdfInput, "startDate" | "endDate" | "issuedAt" | "photo"> & { startDate: string; endDate: string; issuedAt: string; photoKey: string | null };
+
+export function toSnapshot(i: CertificatePdfInput, photoKey: string | null): CertificateSnapshot {
+  const { photo: _p, ...rest } = i;
+  return { ...rest, startDate: i.startDate.toISOString(), endDate: i.endDate.toISOString(), issuedAt: i.issuedAt.toISOString(), photoKey };
+}
+
+export function fromSnapshot(s: CertificateSnapshot, photo: Uint8Array | null = null): CertificatePdfInput {
+  const { photoKey: _k, ...rest } = s;
+  return { ...rest, startDate: new Date(s.startDate), endDate: new Date(s.endDate), issuedAt: new Date(s.issuedAt), photo };
+}
+
 export type CertificatePdfInput = {
   certNo: string;
   traineeName: string;

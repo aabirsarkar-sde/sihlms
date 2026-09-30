@@ -5,6 +5,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-cert
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
+# postinstall runs `prisma generate`, which needs the schema
+COPY apps/web/prisma apps/web/prisma
 RUN pnpm install --frozen-lockfile
 COPY apps/web apps/web
 WORKDIR /app/apps/web

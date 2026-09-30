@@ -23,6 +23,23 @@ pnpm prisma migrate deploy && pnpm db:seed && pnpm dev
 
 Optional: set `ANTHROPIC_API_KEY` for the LLM chatbot and lesson auto-translate. Without it, the chatbot answers from the FAQ in the user's language. To let a judge's phone open certificate QR codes, set `APP_URL` to your laptop's LAN address (for example `http://192.168.1.20:3000`) **before seeding**, because the URL is printed inside each PDF.
 
+## Deploy on Vercel
+
+1. **Import** the repo and pick **Import single project → `web`** (not the multi-service preset). Root Directory: `apps/web`. Vercel runs `pnpm vercel-build`, which applies migrations and then builds.
+2. **Database:** create a Postgres with pgvector available (Neon / Vercel Postgres or Supabase). Set:
+   - `DATABASE_URL`: the **pooled** URL with `?pgbouncer=true&connection_limit=5` appended (Neon/Supabase poolers need `pgbouncer=true` for Prisma; 5 connections lets certificate issuing run its parallel transactions).
+   - `DIRECT_URL`: the **non-pooled** URL, used only by `prisma migrate deploy`.
+3. **Blob:** Storage → create a Blob store (private) and connect it to the project; this adds `BLOB_READ_WRITE_TOKEN`.
+4. **Other variables:** `AUTH_SECRET` (long random string), `APP_URL` (e.g. `https://sihlms.vercel.app`), `DEMO_MODE=true`, `CRON_SECRET` (any string), optional `ANTHROPIC_API_KEY`, and `FACE_SVC_URL` if you host face-svc elsewhere (Render/Railway/Fly; it is too large for Vercel functions).
+5. **Seed once from your laptop** against the hosted DB. Use the same `APP_URL` as step 4, because it is printed in every certificate:
+   ```bash
+   cd apps/web
+   DATABASE_URL="<DIRECT_URL>" APP_URL="https://sihlms.vercel.app" BLOB_READ_WRITE_TOKEN="<token>" pnpm db:seed
+   ```
+   With the Blob token set, the seed does **not** upload its 1,200 PDFs (Hobby Blob has a small monthly upload quota). Each certificate stores a render snapshot; a download rebuilds the byte-identical PDF and serves it only if its SHA-256 matches the issued hash. Certificates issued from the app are uploaded normally.
+
+Vercel Cron calls `/api/v1/cron` daily (the Hobby plan allows one run a day); docker compose calls it every minute. Without face-svc, face attendance reports "unavailable" and QR/manual marking still work.
+
 ## Demo logins (OTP is always `123456` in demo mode)
 
 The login page has one-tap buttons for each role.

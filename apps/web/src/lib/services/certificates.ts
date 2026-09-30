@@ -4,7 +4,7 @@ import { ApiError, notFound } from "../errors";
 import { audit } from "../audit";
 import { authorize, type Actor } from "../rbac";
 import { notify } from "../notify";
-import { renderCertificatePdf } from "../pdf";
+import { fromSnapshot, renderCertificatePdf, toSnapshot, type CertificateSnapshot } from "../pdf";
 import { getObject, putObject } from "../storage";
 import { evaluateEligibility, formatCertNo, type EligibilityResult } from "./eligibility";
 
@@ -84,8 +84,8 @@ export async function issueCertificates(actor: Actor, programmeId: string) {
           const certNo = formatCertNo(p.institution.code, year, first + i + j);
           let photo: Uint8Array | null = null;
           const key = photoOf.get(t.traineeId);
-          if (key && !key.startsWith("http")) photo = await getObject(key).catch(() => null);
-          const pdf = await renderCertificatePdf({
+          if (key) photo = await getObject(key).catch(() => null);
+          const input = {
             certNo,
             traineeName: t.name,
             programmeTitle: p.title,
@@ -96,11 +96,13 @@ export async function issueCertificates(actor: Actor, programmeId: string) {
             issuedAt,
             verifyUrl: `${appUrl()}/verify/${certNo}`,
             photo,
-          });
+          };
+          const pdf = await renderCertificatePdf(input);
+          const renderInput = toSnapshot(input, photo ? key ?? null : null);
           const sha256 = createHash("sha256").update(pdf).digest("hex");
-          const pdfUrl = await putObject(`certificates/${certNo}.pdf`, pdf);
+          const pdfUrl = await putObject(`certificates/${certNo}.pdf`, pdf, "application/pdf");
           await db.$transaction(async (tx) => {
-            const c = await tx.certificate.create({ data: { certNo, traineeId: t.traineeId, programmeId, issuedAt, pdfUrl, sha256 } });
+            const c = await tx.certificate.create({ data: { certNo, traineeId: t.traineeId, programmeId, issuedAt, pdfUrl, sha256, renderInput } });
             await tx.enrollment.updateMany({ where: { programmeId, traineeId: t.traineeId }, data: { completedAt: issuedAt } });
             await audit(actor.id, "certificate.issue", "Certificate", c.id, { certNo, sha256 }, tx);
             await notify(t.traineeId, "Certificate issued", `Your certificate ${certNo} for ${p.title} is in your wallet.`, tx, "SMS");
@@ -170,4 +172,19 @@ export async function verifyByHash(bytes: Uint8Array) {
   const c = await db.certificate.findFirst({ where: { sha256 }, select: { certNo: true } });
   if (!c) return { match: false as const, sha256 };
   return { match: true as const, sha256, result: await verifyCertificate(c.certNo) };
+}
+
+/**
+ * The issued PDF bytes. Reads the stored file; if it is not stored (e.g. seeded on a host without file storage),
+ * rebuilds it from the certificate's render snapshot and serves it only if its SHA-256 matches the issued hash.
+ */
+export async function certificatePdfBytes(pdfKey: string): Promise<Uint8Array | null> {
+  const stored = await getObject(pdfKey).catch(() => null);
+  if (stored) return stored;
+  const c = await db.certificate.findFirst({ where: { pdfUrl: pdfKey } });
+  if (!c?.renderInput) return null;
+  const snap = c.renderInput as unknown as CertificateSnapshot;
+  const photo = snap.photoKey ? await getObject(snap.photoKey).catch(() => null) : null;
+  const bytes = await renderCertificatePdf(fromSnapshot(snap, photo));
+  return createHash("sha256").update(bytes).digest("hex") === c.sha256 ? bytes : null;
 }
