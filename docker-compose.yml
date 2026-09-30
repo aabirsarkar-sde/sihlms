@@ -1,0 +1,59 @@
+# `docker compose up` → app on http://localhost:3000, then `pnpm db:seed` (from apps/web, or `docker compose exec web pnpm db:seed`).
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: sahakar
+      POSTGRES_PASSWORD: sahakar
+      POSTGRES_DB: sahakar
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sahakar"]
+      interval: 3s
+      retries: 20
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://sahakar:sahakar@postgres:5432/sahakar
+      AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production-0123456789abcdef}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      FACE_SVC_URL: http://face-svc:8001
+      DEMO_MODE: ${DEMO_MODE:-true}
+      INSECURE_COOKIES: ${INSECURE_COOKIES:-1}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CRON_SECRET: ${CRON_SECRET:-dev-cron}
+    ports: ["3000:3000"]
+    volumes: ["./apps/web/uploads:/app/apps/web/uploads"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  # Polls the DB-backed job table every minute (the "Next.js cron route").
+  cron:
+    image: curlimages/curl:8.10.1
+    entrypoint: ["sh", "-c", "while true; do curl -s -X POST -H 'Authorization: Bearer ${CRON_SECRET:-dev-cron}' http://web:3000/api/v1/cron >/dev/null; sleep 60; done"]
+    depends_on: [web]
+
+  face-svc:
+    build: ./services/face-svc
+    environment:
+      CORS_ORIGINS: "*"
+    ports: ["8001:8001"]
+
+  # Optional S3-compatible store (files default to the local ./uploads volume; see DECISIONS.md).
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: sahakar
+      MINIO_ROOT_PASSWORD: sahakar-secret
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [miniodata:/data]
+    profiles: ["minio"]
+
+volumes:
+  pgdata:
+  miniodata:

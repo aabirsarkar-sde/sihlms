@@ -1,0 +1,14 @@
+{
+  "extends": ["next/core-web-vitals"],
+  "rules": {
+    "react/jsx-no-literals": [
+      "error",
+      {
+        "noStrings": false,
+        "ignoreProps": true,
+        "allowedStrings": ["·", "—", "–", "/", "%", "→", "₹", "×", "+", ":", "(", ")", "|", "-", ",", ".", "#", "SHA-256:", "VAMNICOM", "RICM", "ICM", "404", "Sahakar Setu"]
+      }
+    ]
+  },
+  "overrides": [{ "files": ["src/app/not-found.tsx"], "rules": { "react/jsx-no-literals": "off" } }]
+}

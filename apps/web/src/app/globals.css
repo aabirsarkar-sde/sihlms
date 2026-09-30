@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+  }
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  @apply bg-gray-50 text-gray-900 antialiased dark:bg-gray-950 dark:text-gray-100;
+  font-feature-settings: "kern";
+}
+:focus-visible {
+  outline: 3px solid #23824f;
+  outline-offset: 2px;
+}
+.prose-lesson h1,
+.prose-lesson h2,
+.prose-lesson h3 {
+  @apply mb-2 mt-5 font-bold text-gray-900 dark:text-gray-50;
+}
+.prose-lesson h2 {
+  @apply text-lg;
+}
+.prose-lesson p {
+  @apply mb-3 leading-7;
+}
+.prose-lesson ul {
+  @apply mb-3 list-disc pl-6;
+}
+.prose-lesson ol {
+  @apply mb-3 list-decimal pl-6;
+}
+.prose-lesson li {
+  @apply mb-1 leading-7;
+}
+
+/* Chart roles (palette validated with the dataviz validator: blue/orange pass CVD in both modes). */
+.viz-root {
+  --viz-surface: #ffffff;
+  --viz-grid: #e7e6e2;
+  --viz-axis: #52514e;
+  --viz-single: #23824f;
+  --viz-s1: #2a78d6;
+  --viz-s2: #eb6834;
+  --viz-seq-0: #ecf7f0;
+  --viz-seq-1: #a6d9ba;
+  --viz-seq-2: #3f9f6a;
+  --viz-seq-3: #17693f;
+  --viz-seq-4: #0d3322;
+}
+@media (prefers-color-scheme: dark) {
+  .viz-root {
+    --viz-surface: #111827;
+    --viz-grid: #2c2c2a;
+    --viz-axis: #c3c2b7;
+    --viz-single: #3f9f6a;
+    --viz-s1: #3987e5;
+    --viz-s2: #d95926;
+    --viz-seq-0: #1f2d25;
+    --viz-seq-1: #1f5a3a;
+    --viz-seq-2: #23824f;
+    --viz-seq-3: #3f9f6a;
+    --viz-seq-4: #a6d9ba;
+  }
+}

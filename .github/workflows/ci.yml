@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: sahakar
+          POSTGRES_PASSWORD: sahakar
+          POSTGRES_DB: sahakar
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sahakar" --health-interval 3s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://sahakar:sahakar@localhost:5432/sahakar
+      AUTH_SECRET: ci-secret-0123456789abcdef0123456789
+      APP_URL: http://localhost:3100
+      NEXT_TELEMETRY_DISABLED: 1
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9.12.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+      - run: pnpm prisma migrate deploy
+      - name: Lint (includes the no-hard-coded-text rule)
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Unit tests
+        run: pnpm test
+      - name: Integration tests (Postgres)
+        run: pnpm test:int
+      - name: Build
+        run: pnpm build
+      - name: Playwright demo flow
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: playwright-report, path: apps/web/playwright-report }
+
+  face-svc:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/face-svc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install numpy fastapi python-multipart opencv-python-headless pytest
+      - run: pytest -q test_liveness.py

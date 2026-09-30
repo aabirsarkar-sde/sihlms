@@ -1,0 +1,640 @@
+generator client {
+  provider        = "prisma-client-js"
+  binaryTargets   = ["native", "debian-openssl-3.0.x"]
+  previewFeatures = ["postgresqlExtensions", "omitApi"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+enum Role {
+  SUPER_ADMIN
+  INSTITUTE_ADMIN
+  FACULTY
+  TRAINEE
+  NOMINATOR
+  EMPLOYER
+}
+
+enum InstitutionType {
+  VAMNICOM
+  RICM
+  ICM
+}
+
+enum ProgrammeStatus {
+  DRAFT
+  PUBLISHED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum ProgrammeMode {
+  IN_PERSON
+  ONLINE
+  BLENDED
+}
+
+enum NominationStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  WAITLISTED
+  WITHDRAWN
+}
+
+enum AttendanceMethod {
+  QR
+  FACE
+  MANUAL
+  KIOSK
+}
+
+enum TraineeCategory {
+  COOP_EMPLOYEE
+  PACS_MEMBER
+  SHG_MEMBER
+  DAIRY_COOP
+  FARMER
+  RURAL_YOUTH
+}
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  APPRENTICESHIP
+  CONTRACT
+}
+
+enum ApplicationStatus {
+  APPLIED
+  SHORTLISTED
+  INTERVIEW
+  OFFERED
+  HIRED
+  REJECTED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  phone         String    @unique
+  email         String?   @unique
+  passwordHash  String?
+  name          String
+  role          Role
+  locale        String    @default("en")
+  institutionId String?
+  status        String    @default("ACTIVE")
+  deletedAt     DateTime?
+
+  institution        Institution?     @relation(fields: [institutionId], references: [id])
+  traineeProfile     TraineeProfile?
+  employerProfile    EmployerProfile?
+  nominations        Nomination[]     @relation("NominationTrainee")
+  nominationsMade    Nomination[]     @relation("NominationBy")
+  nominationsDecided Nomination[]     @relation("NominationDecider")
+  enrollments        Enrollment[]
+  sessionsTaught     Session[]
+  attendances        Attendance[]     @relation("AttendanceTrainee")
+  attendancesMarked  Attendance[]     @relation("AttendanceMarker")
+  allocations        RoomAllocation[]
+  coursesOwned       Course[]
+  lessonProgress     LessonProgress[]
+  attempts           Attempt[]
+  certificates       Certificate[]
+  jobs               Job[]
+  applications       Application[]
+  chatMessages       ChatMessage[]
+  auditLogs          AuditLog[]
+  coordinating       Programme[]
+  notifications      Notification[]
+
+  @@index([role])
+  @@index([institutionId])
+  @@index([status])
+}
+
+model TraineeProfile {
+  id              String          @id @default(cuid())
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  userId          String          @unique
+  category        TraineeCategory
+  gender          String
+  dob             DateTime
+  state           String
+  district        String
+  village         String?
+  cooperativeName String?
+  education       String
+  languages       String[]
+  skills          String[]
+  aadhaarLast4    String?
+  photoUrl        String?
+  faceEmbedding   Bytes?
+  faceConsentAt   DateTime?
+  openToWork      Boolean         @default(false)
+  diet            String          @default("VEG")
+  resumeUrl       String?
+  lat             Float?
+  lng             Float?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([state, district])
+  @@index([category])
+  @@index([openToWork])
+}
+
+model EmployerProfile {
+  id         String    @id @default(cuid())
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  userId     String    @unique
+  orgName    String
+  orgType    String
+  state      String
+  district   String
+  gstin      String?
+  verifiedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Institution {
+  id        String          @id @default(cuid())
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  name      String
+  code      String          @unique
+  type      InstitutionType
+  state     String
+  city      String
+  address   String
+  lat       Float?
+  lng       Float?
+
+  users      User[]
+  programmes Programme[]
+  hostels    Hostel[]
+  devices    Device[]
+}
+
+model Programme {
+  id                 String            @id @default(cuid())
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  institutionId      String
+  code               String            @unique
+  title              String
+  description        String
+  targetCategories   TraineeCategory[]
+  mode               ProgrammeMode
+  status             ProgrammeStatus
+  startDate          DateTime
+  endDate            DateTime
+  capacity           Int
+  nominationDeadline DateTime
+  passMarkPct        Int               @default(60)
+  minAttendancePct   Int               @default(75)
+  courseId           String?
+  coordinatorId      String
+  deletedAt          DateTime?
+
+  institution    Institution      @relation(fields: [institutionId], references: [id])
+  course         Course?          @relation(fields: [courseId], references: [id])
+  coordinator    User             @relation(fields: [coordinatorId], references: [id])
+  nominations    Nomination[]
+  enrollments    Enrollment[]
+  sessions       Session[]
+  allocations    RoomAllocation[]
+  logisticsItems LogisticsItem[]
+  certificates   Certificate[]
+
+  @@index([institutionId])
+  @@index([status])
+  @@index([startDate])
+  @@index([courseId])
+}
+
+model Nomination {
+  id            String           @id @default(cuid())
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  programmeId   String
+  traineeId     String
+  nominatedById String
+  status        NominationStatus
+  remarks       String?
+  decidedById   String?
+  decidedAt     DateTime?
+
+  programme   Programme   @relation(fields: [programmeId], references: [id])
+  trainee     User        @relation("NominationTrainee", fields: [traineeId], references: [id])
+  nominatedBy User        @relation("NominationBy", fields: [nominatedById], references: [id])
+  decidedBy   User?       @relation("NominationDecider", fields: [decidedById], references: [id])
+  enrollment  Enrollment?
+
+  @@unique([programmeId, traineeId])
+  @@index([status])
+  @@index([nominatedById])
+  @@index([traineeId])
+}
+
+model Enrollment {
+  id           String    @id @default(cuid())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  programmeId  String
+  traineeId    String
+  nominationId String    @unique
+  completedAt  DateTime?
+
+  programme  Programme  @relation(fields: [programmeId], references: [id])
+  trainee    User       @relation(fields: [traineeId], references: [id])
+  nomination Nomination @relation(fields: [nominationId], references: [id], onDelete: Cascade)
+
+  @@unique([programmeId, traineeId])
+  @@index([traineeId])
+}
+
+model Session {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  programmeId String
+  title       String
+  facultyId   String
+  room        String
+  startsAt    DateTime
+  endsAt      DateTime
+  qrSecret    String
+
+  programme   Programme    @relation(fields: [programmeId], references: [id])
+  faculty     User         @relation(fields: [facultyId], references: [id])
+  attendances Attendance[]
+
+  @@index([programmeId])
+  @@index([facultyId])
+  @@index([startsAt])
+}
+
+model Attendance {
+  id         String           @id @default(cuid())
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  sessionId  String
+  traineeId  String
+  method     AttendanceMethod
+  markedAt   DateTime
+  markedById String?
+  deviceId   String?
+  confidence Float?
+  clientId   String           @unique
+  present    Boolean          @default(true)
+  reason     String?
+
+  session  Session @relation(fields: [sessionId], references: [id])
+  trainee  User    @relation("AttendanceTrainee", fields: [traineeId], references: [id])
+  markedBy User?   @relation("AttendanceMarker", fields: [markedById], references: [id])
+
+  @@unique([sessionId, traineeId])
+  @@index([traineeId])
+}
+
+model Hostel {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  institutionId String
+  name          String
+  gender        String
+
+  institution Institution @relation(fields: [institutionId], references: [id])
+  rooms       Room[]
+
+  @@index([institutionId])
+}
+
+model Room {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  hostelId  String
+  number    String
+  beds      Int
+
+  hostel      Hostel           @relation(fields: [hostelId], references: [id])
+  allocations RoomAllocation[]
+
+  @@index([hostelId])
+}
+
+model RoomAllocation {
+  id          String    @id @default(cuid())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  roomId      String
+  traineeId   String
+  programmeId String
+  checkIn     DateTime?
+  checkOut    DateTime?
+
+  room      Room      @relation(fields: [roomId], references: [id])
+  trainee   User      @relation(fields: [traineeId], references: [id])
+  programme Programme @relation(fields: [programmeId], references: [id])
+
+  @@unique([programmeId, traineeId])
+  @@index([roomId])
+}
+
+model LogisticsItem {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  programmeId String
+  kind        String
+  details     Json
+
+  programme Programme @relation(fields: [programmeId], references: [id])
+
+  @@index([programmeId])
+}
+
+model Course {
+  id          String    @id @default(cuid())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  title       String
+  description String
+  language    String
+  ownerId     String
+  published   Boolean
+  deletedAt   DateTime?
+
+  owner       User         @relation(fields: [ownerId], references: [id])
+  modules     Module[]
+  assessments Assessment[]
+  programmes  Programme[]
+
+  @@index([ownerId])
+}
+
+model Module {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  courseId  String
+  order     Int
+  title     String
+
+  course  Course   @relation(fields: [courseId], references: [id])
+  lessons Lesson[]
+
+  @@index([courseId])
+}
+
+model Lesson {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  moduleId      String
+  order         Int
+  title         String
+  kind          String
+  contentUrl    String?
+  body          String?
+  translations  Json
+  durationMin   Int
+  offlineSizeKb Int
+  captionsUrl   String?
+
+  module   Module           @relation(fields: [moduleId], references: [id])
+  progress LessonProgress[]
+
+  @@index([moduleId])
+}
+
+model LessonProgress {
+  id            String    @id @default(cuid())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lessonId      String
+  traineeId     String
+  completedAt   DateTime?
+  secondsSpent  Int
+
+  lesson  Lesson @relation(fields: [lessonId], references: [id])
+  trainee User   @relation(fields: [traineeId], references: [id])
+
+  @@unique([lessonId, traineeId])
+  @@index([traineeId])
+}
+
+model Assessment {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  courseId     String
+  title        String
+  timeLimitMin Int
+  questions    Json
+
+  course   Course    @relation(fields: [courseId], references: [id])
+  attempts Attempt[]
+
+  @@index([courseId])
+}
+
+model Attempt {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  assessmentId String
+  traineeId    String
+  answers      Json
+  scorePct     Float
+  submittedAt  DateTime
+  clientId     String   @unique
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id])
+  trainee    User       @relation(fields: [traineeId], references: [id])
+
+  @@index([assessmentId, traineeId])
+  @@index([traineeId])
+}
+
+model Certificate {
+  id           String    @id @default(cuid())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  certNo       String    @unique
+  traineeId    String
+  programmeId  String
+  issuedAt     DateTime
+  pdfUrl       String
+  sha256       String
+  revokedAt    DateTime?
+  revokeReason String?
+
+  trainee   User      @relation(fields: [traineeId], references: [id])
+  programme Programme @relation(fields: [programmeId], references: [id])
+
+  @@unique([programmeId, traineeId])
+  @@index([traineeId])
+  @@index([sha256])
+}
+
+model Job {
+  id                     String    @id @default(cuid())
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  employerId             String
+  title                  String
+  description            String
+  jobType                JobType
+  state                  String
+  district               String
+  salaryMin              Int?
+  salaryMax              Int?
+  requiredSkills         String[]
+  requiredProgrammeCodes String[]
+  closesAt               DateTime
+  deletedAt              DateTime?
+  lat                    Float?
+  lng                    Float?
+  hidden                 Boolean   @default(false)
+
+  employer     User          @relation(fields: [employerId], references: [id])
+  applications Application[]
+
+  @@index([employerId])
+  @@index([closesAt])
+}
+
+model Application {
+  id         String            @id @default(cuid())
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  jobId      String
+  traineeId  String
+  status     ApplicationStatus
+  coverNote  String?
+
+  job     Job  @relation(fields: [jobId], references: [id])
+  trainee User @relation(fields: [traineeId], references: [id])
+
+  @@unique([jobId, traineeId])
+  @@index([status])
+  @@index([traineeId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  role      String
+  content   String
+  locale    String
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model ContentChunk {
+  id         String                       @id @default(cuid())
+  createdAt  DateTime                     @default(now())
+  updatedAt  DateTime                     @updatedAt
+  sourceType String
+  sourceId   String
+  text       String
+  embedding  Unsupported("vector(1024)")?
+
+  @@index([sourceType, sourceId])
+}
+
+model Device {
+  id            String    @id @default(cuid())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  institutionId String
+  name          String
+  kind          String
+  apiKeyHash    String    @unique
+  lastSeenAt    DateTime?
+
+  institution Institution @relation(fields: [institutionId], references: [id])
+
+  @@index([institutionId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  actorId   String?
+  action    String
+  entity    String
+  entityId  String
+  diff      Json
+  ip        String?
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([entity, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+}
+
+// ---- Supporting tables (see DECISIONS.md) ----
+
+model OtpRequest {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  phone     String
+  code      String
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  @@index([phone, createdAt])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  createdAt DateTime  @default(now())
+  userId    String
+  channel   String
+  title     String
+  body      String
+  readAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt])
+}
+
+model JobQueue {
+  id        String    @id @default(cuid())
+  createdAt DateTime  @default(now())
+  kind      String
+  payload   Json
+  runAt     DateTime  @default(now())
+  doneAt    DateTime?
+  error     String?
+  attempts  Int       @default(0)
+
+  @@index([doneAt, runAt])
+}
+
+model Counter {
+  key   String @id
+  value Int
+}

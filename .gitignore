@@ -1,0 +1,10 @@
+node_modules
+.next
+.env
+.env.local
+uploads
+*.log
+test-results
+playwright-report
+__pycache__
+.venv
